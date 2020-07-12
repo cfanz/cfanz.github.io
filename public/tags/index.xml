@@ -1,29 +1,29 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes" ?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title>Categories on Pure theme for Hugo</title>
-    <link>https://cfanz.github.io/categories/</link>
-    <description>Recent content in Categories on Pure theme for Hugo</description>
+    <title>Tags on Pure theme for Hugo</title>
+    <link>http://127.0.0.1:8080/tags/</link>
+    <description>Recent content in Tags on Pure theme for Hugo</description>
     <generator>Hugo -- gohugo.io</generator>
     
-        <atom:link href="https://cfanz.github.io/categories/index.xml" rel="self" type="application/rss+xml" />
+        <atom:link href="http://127.0.0.1:8080/tags/index.xml" rel="self" type="application/rss+xml" />
     
     
     <item>
       <title>CephFS 内部实现（四）：MDS是如何启动的？</title>
-      <link>https://cfanz.github.io/2020/07/ceph-fs-part-4/</link>
+      <link>http://127.0.0.1:8080/2020/07/first/</link>
       <pubDate>Sun, 12 Jul 2020 16:45:07 +0800</pubDate>
       
-      <guid>https://cfanz.github.io/2020/07/ceph-fs-part-4/</guid>
+      <guid>http://127.0.0.1:8080/2020/07/first/</guid>
       <description>MDS启动时要经历一系列状态装换，但mds的各个状态是如何产生、确定的？这些状态究竟在处理什么？本篇尝试以正常启动mds为背景解释这两个问题</description>
     </item>
     
     <item>
       <title>About</title>
-      <link>https://cfanz.github.io/about/about/</link>
+      <link>http://127.0.0.1:8080/about/about/</link>
       <pubDate>Sun, 12 Jul 2020 16:44:37 +0800</pubDate>
       
-      <guid>https://cfanz.github.io/about/about/</guid>
+      <guid>http://127.0.0.1:8080/about/about/</guid>
       <description></description>
     </item>
     

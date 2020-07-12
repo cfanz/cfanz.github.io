@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>
+        CephFS 内部实现（四）：MDS是如何启动的？ - Pure theme for Hugo
+      </title>
+        <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    <meta name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, minimal-ui">
+    <meta name="renderer" content="webkit">
+    <meta http-equiv="Cache-Control" content="no-transform" />
+    <meta http-equiv="Cache-Control" content="no-siteapp" />
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <meta name="format-detection" content="telephone=no,email=no,adress=no">
+    
+    <meta name="theme-color" content="#000000" />
+    
+    <meta http-equiv="window-target" content="_top" />
+    
+    
+    <meta name="description" content="MDS启动时要经历一系列状态装换，但mds的各个状态是如何产生、确定的？这些状态究竟在处理什么？本篇尝试以正常启动mds为背景解释这两个问题" />
+    <meta name="generator" content="Hugo 0.67.1 with theme pure" />
+    <title>CephFS 内部实现（四）：MDS是如何启动的？ - Pure theme for Hugo</title>
+    
+    
+    <link rel="stylesheet" href="http://127.0.0.1:8080/css/style.min.7dc20efbc53647d41aa9ddea0c48e59300223d084e66ea0cbe7c30bd88903acc.css">
+    
+    <link rel="stylesheet" href="https://cdn.staticfile.org/highlight.js/9.15.10/styles/github.min.css" async>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tocbot/4.4.2/tocbot.css" async>
+    <meta property="og:title" content="CephFS 内部实现（四）：MDS是如何启动的？" />
+<meta property="og:description" content="MDS启动时要经历一系列状态装换，但mds的各个状态是如何产生、确定的？这些状态究竟在处理什么？本篇尝试以正常启动mds为背景解释这两个问题" />
+<meta property="og:type" content="article" />
+<meta property="og:url" content="http://127.0.0.1:8080/2020/07/first/" />
+<meta property="article:published_time" content="2020-07-12T16:45:07+08:00" />
+<meta property="article:modified_time" content="2020-07-12T16:45:07+08:00" />
+<meta itemprop="name" content="CephFS 内部实现（四）：MDS是如何启动的？">
+<meta itemprop="description" content="MDS启动时要经历一系列状态装换，但mds的各个状态是如何产生、确定的？这些状态究竟在处理什么？本篇尝试以正常启动mds为背景解释这两个问题">
+<meta itemprop="datePublished" content="2020-07-12T16:45:07&#43;08:00" />
+<meta itemprop="dateModified" content="2020-07-12T16:45:07&#43;08:00" />
+<meta itemprop="wordCount" content="2839">
+
+
+
+<meta itemprop="keywords" content="" /><meta name="twitter:card" content="summary"/>
+<meta name="twitter:title" content="CephFS 内部实现（四）：MDS是如何启动的？"/>
+<meta name="twitter:description" content="MDS启动时要经历一系列状态装换，但mds的各个状态是如何产生、确定的？这些状态究竟在处理什么？本篇尝试以正常启动mds为背景解释这两个问题"/>
+
+    <!--[if lte IE 9]>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/classlist/1.1.20170427/classList.min.js"></script>
+      <![endif]-->
+
+    <!--[if lt IE 9]>
+        <script src="https://cdn.jsdelivr.net/npm/html5shiv@3.7.3/dist/html5shiv.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/respond.js@1.4.2/dest/respond.min.js"></script>
+      <![endif]-->
+  </head>
+
+  
+  
+
+  <body class="main-center theme-black" itemscope itemtype="http://schema.org/WebPage"><header class="header" itemscope itemtype="http://schema.org/WPHeader">
+    <div class="slimContent">
+      <div class="navbar-header">
+        <div class="profile-block text-center">
+          <a id="avatar" href="https://github.com/cfanz" target="_blank">
+            <img class="img-circle img-rotate" src="http://127.0.0.1:8080/avatar.png" width="200" height="200">
+          </a>
+          <h2 id="name" class="hidden-xs hidden-sm">cfanz</h2>
+          <h3 id="title" class="hidden-xs hidden-sm hidden-md"></h3>
+          <small id="location" class="text-muted hidden-xs hidden-sm"><i class="icon icon-map-marker"></i>Beijing, China</small>
+        </div><div class="search" id="search-form-wrap">
+    <form class="search-form sidebar-form">
+        <div class="input-group">
+            <input type="text" class="search-form-input form-control" placeholder="Search" />
+            <span class="input-group-btn">
+                <button type="submit" class="search-form-submit btn btn-flat" onclick="return false;"><i
+                        class="icon icon-search"></i></button>
+            </span>
+        </div>
+        <div class="ins-search">
+            <div class="ins-search-mask"></div>
+            <div class="ins-search-container">
+                <div class="ins-input-wrapper">
+                    <input type="text" class="ins-search-input" placeholder="Type something..."
+                        x-webkit-speech />
+                    <button type="button" class="close ins-close ins-selectable" data-dismiss="modal"
+                        aria-label="Close"><span aria-hidden="true">×</span></button>
+                </div>
+                <div class="ins-section-wrapper">
+                    <div class="ins-section-container"></div>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+        <button class="navbar-toggle collapsed" type="button" data-toggle="collapse" data-target="#main-navbar" aria-controls="main-navbar" aria-expanded="false">
+          <span class="sr-only">Toggle navigation</span>
+          <span class="icon-bar"></span>
+          <span class="icon-bar"></span>
+          <span class="icon-bar"></span>
+        </button>
+      </div>
+      <nav id="main-navbar" class="collapse navbar-collapse" itemscope itemtype="http://schema.org/SiteNavigationElement" role="navigation">
+        <ul class="nav navbar-nav main-nav">
+            <li class="menu-item menu-item-home">
+                <a href="/">
+                    <i class="icon icon-home-fill"></i>
+                  <span class="menu-title">Home</span>
+                </a>
+            </li>
+            <li class="menu-item menu-item-archives">
+                <a href="/posts/">
+                    <i class="icon icon-archives-fill"></i>
+                  <span class="menu-title">Archives</span>
+                </a>
+            </li>
+            <li class="menu-item menu-item-categories">
+                <a href="/categories/">
+                    <i class="icon icon-folder"></i>
+                  <span class="menu-title">Categories</span>
+                </a>
+            </li>
+            <li class="menu-item menu-item-tags">
+                <a href="/tags/">
+                    <i class="icon icon-tags"></i>
+                  <span class="menu-title">Tags</span>
+                </a>
+            </li>
+            <li class="menu-item menu-item-about">
+                <a href="/about/">
+                    <i class="icon icon-cup-fill"></i>
+                  <span class="menu-title">About</span>
+                </a>
+            </li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+<aside class="sidebar" itemscope itemtype="http://schema.org/WPSideBar">
+  <div class="slimContent">
+    
+      <div class="widget">
+    <h3 class="widget-title">Board</h3>
+    <div class="widget-body">
+        <div id="board">
+            <div class="content"><p>enjoy~</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+      <div class="widget">
+    <h3 class="widget-title"> Categories</h3>
+    <div class="widget-body">
+        <ul class="category-list">
+        </ul>
+    </div>
+</div>
+      <div class="widget">
+    <h3 class="widget-title"> Tags</h3>
+    <div class="widget-body">
+        <ul class="tag-list">
+            
+        </ul>
+
+    </div>
+</div>
+      
+<div class="widget">
+    <h3 class="widget-title">Recent Posts</h3>
+    <div class="widget-body">
+        <ul class="recent-post-list list-unstyled no-thumbnail">
+            <li>
+                <div class="item-inner">
+                    <p class="item-title">
+                        <a href="http://127.0.0.1:8080/2020/07/first/" class="title">CephFS 内部实现（四）：MDS是如何启动的？</a>
+                    </p>
+                    <p class="item-date">
+                        <time datetime="2020-07-12 16:45:07 &#43;0800 CST" itemprop="datePublished">2020-07-12</time>
+                    </p>
+                </div>
+            </li>
+        </ul>
+    </div>
+</div>
+  </div>
+</aside>
+
+    
+    
+<aside class="sidebar sidebar-toc collapse" id="collapseToc" itemscope itemtype="http://schema.org/WPSideBar">
+  <div class="slimContent">
+    <h4 class="toc-title">Catalogue</h4>
+    <nav id="toc" class="js-toc toc">
+
+    </nav>
+  </div>
+</aside>
+<main class="main" role="main"><div class="content">
+  <article id="-" class="article article-type-" itemscope
+    itemtype="http://schema.org/BlogPosting">
+    
+    <div class="article-header">
+      <h1 itemprop="name">
+  <a
+    class="article-title"
+    href="/2020/07/first/"
+    >CephFS 内部实现（四）：MDS是如何启动的？</a
+  >
+</h1>
+
+      <div class="article-meta">
+        
+<span class="article-date">
+  <i class="icon icon-calendar-check"></i>&nbsp;
+<a href="http://127.0.0.1:8080/2020/07/first/" class="article-date">
+  <time datetime="2020-07-12 16:45:07 &#43;0800 CST" itemprop="datePublished">2020-07-12</time>
+</a>
+</span>
+
+
+        <span class="post-comment"><i class="icon icon-comment"></i>&nbsp;<a href="/2020/07/first/#comments"
+            class="article-comment-link">Comments</a></span>
+		<span class="post-wordcount hidden-xs" itemprop="wordCount">Word Count: 2839words</span>
+		<span class="post-readcount hidden-xs" itemprop="timeRequired">Read Count: 6minutes </span>
+      </div>
+    </div>
+    <div class="article-entry marked-body js-toc-content" itemprop="articleBody">
+      <p>MDS启动时要经历一系列状态装换，但mds的各个状态是如何产生、确定的？这些状态究竟在处理什么？本篇尝试以正常启动mds为背景解释这两个问题。</p>
+<h1 id="mds和monitor的交互">MDS和Monitor的交互</h1>
+<p>为提供FS服务，首先要<code>ceph fs new</code>命令创建filesystem，然后再启动mds进程。
+其中<code>ceph fs new</code>命令由<code>MDSMonitor</code>组件处理，将一个文件系统信息（底层pool是哪些，一些feature等）写入monitor store，此时文件系统是没有关联mds的，所以是不可用的。
+mds进程启动后，通过向<code>MDSMonitor</code>发送<code>Beacon</code>消息，并接收从<code>MDSMonitor</code>返回的<code>MDSMap</code>消息逐步启动自己。<code>Beacon</code>除了用于告知monitor关于mds的健康状态，还有<code>want_state</code>这一信息。<code>want_state</code>的值是在mds启动或者收到<code>MDSMap</code>后由mds自己决定的(如向resolve、reconnect、rejoin等转换）。
+<code>MDSMonitor</code>接收mds发来的<code>Beacon</code>消息，更新<code>pending_fsmap</code>，写入store。<code>MDSMonitor::tick()</code>在每次写完store后被调用，对pending_fsmap进行遍历，尝试给fsmap关联mds，然后更新pending_fsmap，再次写入store，完成后向mds发送<code>MDSMap</code>。关联到fsmap的mds分两类：一类是具有rank的，最终mds daemon会进入到<code>STATE_ACTIVE</code>状态，其中rank值由<code>MDSMonitor</code>分配；另一类是<code>STATE_STANDBY_REPLAY</code>，每个fsmap最多有一个，没有rank值。关联动作是通过遍历已创建fs map（如果创建了多个filesystem，那么此处就会有多个fs map），寻找可用的处于STATE_STANDBY状态的mds实现的，具体在<code>MDSMonitor::maybe_expand_cluster()</code>。
+在众多mds状态中，由<code>MDSMonitor</code>路径负责的状态转换只有一部分，所以在<code>MDSMonitor</code>的代码里不会看到全部mds状态。其他状态转换是在mds端做的决策，此时monitor只是作为一个记录者，负责将状态写入store中。</p>
+<p><img src="/images/ceph/mds_start.png" alt="mds_start.png"></p>
+<h1 id="mds-状态">MDS 状态</h1>
+<h2 id="monitor关于mds状态的处理">Monitor关于mds状态的处理</h2>
+<p><code>MDSMonitor</code>每次写完store后都会由<code>MDSMonitor::tick()</code>做三件事：</p>
+<ul>
+<li>查看是否有filesystem需要关联mds</li>
+<li>查看是否有非健康的mds</li>
+<li>查看是否需要将mds从<code>STATE_STANDBY</code>变成<code>STATE_STANDBY_REPALY</code>
+后两个相对简单些，这里就不再详述。对于第一个<em>给filesystem关联mds</em>，是由<code>MDSMonitor::maybe_expand_cluster()</code>完成。</li>
+</ul>
+<p><img src="/images/ceph/MDSMonitor.png" alt="MDSMonitor计算mds状态"></p>
+<p>在正常启动阶段，<code>MDSMonitor</code>代码，已经<code>MDSMonitor</code>调用的<code>FSMap::promote</code>中主要使用了以下状态：</p>
+<ul>
+<li>STATE_STANDBY ：收到BOOT beacon时直接设置mds为此状态，表明空闲可用</li>
+<li>STATE_STANDBY_REPLAY</li>
+<li>STATE_CREATING：全新的rank，表明mds需要准备journal对象等元数据，由于没有历史包袱，所以这里不需要load元数据或者replay日志之类的操作</li>
+<li>STATE_STARING：停止的rank，不需要创建journal等元数据，但需要load元数据</li>
+<li>STATE_REPLAY</li>
+</ul>
+<p>对于resolve等状态<code>MDSMonitor</code>是不涉及的，这些是在MDS端处理。</p>
+<h2 id="mds侧关于mds状态的处理">mds侧关于mds状态的处理</h2>
+<p>MDS在启动时设置自己状态为<code>STATE_BOOT</code>，并通过beacon发送给<code>MDSMonitor</code>。后续将通过接收到的<code>MDSMap</code>来进一步决定自己的状态。</p>
+<p><img src="/images/ceph/mds_state_trans.png" alt="mds状态变化"></p>
+<p><code>MDS_BOOT_xxx</code>对应<code>MDSRank::boot_start()</code>中的步骤，每个步骤作用：</p>
+<ul>
+<li>
+<p><code>MDS_BOOT_INITIAL</code>：从rados中读取并初始化inodetable，sessionmap，log等信息。</p>
+</li>
+<li>
+<p><code>MDS_BOOT_OPEN_ROOT</code>：初始化目录树的根目录（包括mdsdir和rootdir）</p>
+</li>
+<li>
+<p><code>MDS_BOOT_PREPARE_LOG</code>：设置log的参数，如果mds处于replay，则会在此进行log-replay</p>
+</li>
+<li>
+<p><code>MDS_BOOT_REPLAY_DONE</code>：log replay已完成，进行一些清理工作，准备进入下一个阶段（对于standby_replay不会再改变状态）</p>
+</li>
+<li>
+<p><code>STATE_RESOLVE</code>：处理slave updates和subtree auth。
+slave update是在多active MDS下，且op需要跨越两个或以上mds时才会产生。如对一个普通文件创建硬链接，目标和源在不同dir下，且两个dir被pin在不同mds时，就会产生slave op。
+这一阶段要做的另外一件事是处理migrator进行到一半的import/export，进行到一半的import/export dir auth是无法确定的，需要在resolve阶段进行确定。slave op处理完后mds会互发subtree信息，这一步中存活的mds会根据从resolve状态的mds接收到的对subtree的声明来进行<code>import_reverse</code>或<code>import_finish</code>最终将subtree的auth确定下来。</p>
+</li>
+<li>
+<p><code>STATE_RECONNECT</code>：遍历sessionmap中的clients，等待client重新建立连接，超时后自动进入下一状态。这一步client可能会将自己对inode已拥有的cap进行声明，如果这些cap有误，可能是inode auth已经改变或者cache中没有inode，对于前者当前mds将inode记录到<code>MDCache::cap_exports</code>，表明会在下一阶段export到auth mds，对于第二种情况，则将inode记录到<code>MDCache::cap_imports</code>表明会在下一阶段对inode进行查找。</p>
+</li>
+<li>
+<p><code>STATE_REJOIN</code>
+这一阶段要处理的事情有：</p>
+<ul>
+<li>rejoin mds通过<code>MDCache::process_imported_caps</code>查找导入的cap对应的inode。首先遍历mds，如果没有找到则从rados读取</li>
+<li>rejoin mds对需要export的inode进行处理</li>
+<li>处理元数据。对于rejoin mds，replay并不能重建全部元数据信息，且由于subtree map只存在于每个LogSegment开头，所以replay后产生的subtree 信息也可能是过时的，这时如果其他节点有相应的元数据，则需要在rejoin阶段进行处理。rejoin mds需要确保其他 mds宣称自己应该拥有的auth元数据已经正确初始化，对于自己拥有的非auth元数据，要和其他mds保持一致。这些一致主要体现在锁和目录树结构上。rejoin mds缺少的auth元数据最后需要从rados读取。</li>
+</ul>
+</li>
+<li>
+<p><code> STATE_CLIENT_REPLAY</code> mds启动阶段block的op在此阶段继续处理</p>
+</li>
+<li>
+<p><code>STATE_ACTIVE</code> mds启动成功</p>
+</li>
+</ul>
+<h2 id="其他状态">其他状态</h2>
+<p>除了以上状态外，还有stop、dne等状态，本文没有涉及。</p>
+
+    </div>
+    <div class="article-footer">
+<blockquote class="mt-2x">
+  <ul class="post-copyright list-unstyled">
+    <li class="post-copyright-link hidden-xs">
+      <strong>Permalink: </strong>
+      <a href="http://127.0.0.1:8080/2020/07/first/" title="CephFS 内部实现（四）：MDS是如何启动的？" target="_blank" rel="external">http://127.0.0.1:8080/2020/07/first/</a>
+    </li>
+    <li class="post-copyright-license">
+      <strong>License：</strong><a href="http://creativecommons.org/licenses/by/4.0/deed.zh" target="_blank" rel="external">CC BY 4.0 CN</a>
+    </li>
+  </ul>
+</blockquote>
+
+<div class="panel panel-default panel-badger">
+  <div class="panel-body">
+    <figure class="media">
+      <div class="media-left">
+        <a href="https://github.com/cfanz" target="_blank" class="img-burn thumb-sm visible-lg">
+          <img src="http://127.0.0.1:8080/avatar.png" class="img-rounded w-full" alt="">
+        </a>
+      </div>
+      <div class="media-body">
+        <h3 class="media-heading"><a href="https://github.com/cfanz" target="_blank"><span class="text-dark">cfanz</span><small class="ml-1x"></small></a></h3>
+        <div>Good Good Study, Day Day Up~</div>
+      </div>
+    </figure>
+  </div>
+</div>
+    </div>
+  </article>
+<section id="comments">
+</section>
+
+</div><nav class="bar bar-footer clearfix" data-stick-bottom>
+    <div class="bar-inner">
+        <ul class="pager pull-left">
+            <li class="prev">
+                <a href="http://127.0.0.1:8080/about/about/" title="About"><i
+                        class="icon icon-angle-left"
+                        aria-hidden="true"></i><span>&nbsp;&nbsp;Older</span></a>
+            </li>
+            
+            <li class="toggle-toc">
+                <a class="toggle-btn collapsed" data-toggle="collapse" href="#collapseToc" aria-expanded="false"
+                    title="Catalogue" role="button">
+                    <span>[&nbsp;</span><span>Catalogue</span>
+                    <i class="text-collapsed icon icon-anchor"></i>
+                    <i class="text-in icon icon-close"></i>
+                    <span>]</span>
+                </a>
+            </li>
+        </ul>
+        <div class="bar-right">
+            <div class="share-component" data-sites="weibo,qq,wechat,facebook,twitter"
+                data-mobile-sites="weibo,qq,qzone"></div>
+        </div>
+    </div>
+</nav>
+
+</main><footer class="footer" itemscope itemtype="http://schema.org/WPFooter">
+<ul class="social-links">
+    <li><a href="https://github.com/cfanz" target="_blank" title="github" data-toggle=tooltip data-placement=top >
+            <i class="icon icon-github"></i></a></li>
+    <li><a href="http://127.0.0.1:8080/index.xml" target="_blank" title="rss" data-toggle=tooltip data-placement=top >
+            <i class="icon icon-rss"></i></a></li>
+</ul>
+  <div class="copyright">
+    &copy;2017  -
+    2020
+    <div class="publishby">
+        Theme by <a href="https://github.com/xiaoheiAh" target="_blank"> xiaoheiAh </a>base on<a href="https://github.com/xiaoheiAh/hugo-theme-pure" target="_blank"> pure</a>.
+    </div>
+  </div>
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.2/MathJax.js?config=TeX-MML-AM_SVG"></script>
+<script type="text/x-mathjax-config">
+    MathJax.Hub.Config({
+            showMathMenu: false, //disables context menu
+            tex2jax: {
+            inlineMath: [ ['$','$'], ['\\(','\\)'] ]
+           }
+    });
+</script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.4.1/dist/jquery.min.js"></script>
+<script>
+    window.jQuery || document.write('<script src="js/jquery.min.js"><\/script>')
+</script>
+<script type="text/javascript" src="https://cdn.staticfile.org/highlight.js/9.15.10/highlight.min.js"></script>
+<script type="text/javascript" src="https://cdn.staticfile.org/highlight.js/9.15.10/languages/python.min.js" defer></script>
+<script type="text/javascript" src="https://cdn.staticfile.org/highlight.js/9.15.10/languages/javascript.min.js" defer></script><script>
+    hljs.configure({
+        tabReplace: '    ', 
+        classPrefix: ''     
+        
+    })
+    hljs.initHighlightingOnLoad();
+</script>
+<script src="http://127.0.0.1:8080/js/application.min.bdeb64b910570b6c41badc6a05b7afb0c8ad9efd8525de3c7257d59e786326a3.js"></script>
+<script src="http://127.0.0.1:8080/js/plugin.min.51ff8c7317566f82259170fa36e09c4493adc9b9378b427a01ad3f017ebac7dd.js"></script>
+
+<script>
+    (function (window) {
+        var INSIGHT_CONFIG = {
+            TRANSLATION: {
+                POSTS: 'Posts',
+                PAGES: 'Pages',
+                CATEGORIES: 'Categories',
+                TAGS: 'Tags',
+                UNTITLED: '(Untitled)',
+            },
+            ROOT_URL: 'http:\/\/127.0.0.1:8080',
+            CONTENT_URL: 'http:\/\/127.0.0.1:8080\/searchindex.json ',
+        };
+        window.INSIGHT_CONFIG = INSIGHT_CONFIG;
+    })(window);
+</script>
+<script type="text/javascript" src="http://127.0.0.1:8080/js/insight.min.a343cd9a5a7698336b28ef3a7c16a3a1b1d2d5fb17dc8ed04022bbe08cc5459073a15bdafa3a8a58cdd56080784bdd69fa70b1ae8597565c799c57ed00f0e120.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tocbot/4.4.2/tocbot.min.js"></script>
+<script>
+    tocbot.init({
+        
+        tocSelector: '.js-toc',
+        
+        contentSelector: '.js-toc-content',
+        
+        headingSelector: 'h1, h2, h3',
+        
+        hasInnerContainers: true,
+    });
+</script>
+
+
+  </body>
+</html>
